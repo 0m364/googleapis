@@ -1,0 +1,1 @@
+No problem! Since this repository contains backend proto definitions and no UI, no dark mode styling is needed. The request is canceled and I'm closing the task.
