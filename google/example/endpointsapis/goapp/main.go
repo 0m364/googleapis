@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -77,7 +78,7 @@ func check(w http.ResponseWriter, r *http.Request, name string, permission strin
 // Name specifies the target resource name. ResponseCode specifies
 // the response code returned to user. Received specifies the
 // timestamp when the request is received.
-func report(w http.ResponseWriter, r *http.Request, name string, responseCode int64, received time.Time, client *servicecontrol.Service) (string, error) {
+func report(protocol string, size int64, name string, responseCode int64, received time.Time, client *servicecontrol.Service) (string, error) {
 	// Construct ReportRequest from the incoming HTTP request.
 	// The code assumes the incoming request processed by App Engine ingress.
 	req := &servicecontrol.ReportRequest{
@@ -88,10 +89,10 @@ func report(w http.ResponseWriter, r *http.Request, name string, responseCode in
 					Service:   "endpointsapis.appspot.com",
 					Operation: "google.example.endpointsapis.v1.Workspaces.GetWorkspace",
 					Version:   "v1",
-					Protocol:  r.Header.Get("x-forwarded-proto"),
+					Protocol:  protocol,
 				},
 				Request: &servicecontrol.Request{
-					Size: r.ContentLength,
+					Size: size,
 					Time: received.UTC().Format(time.RFC3339),
 				},
 				Response: &servicecontrol.Response{
@@ -108,7 +109,7 @@ func report(w http.ResponseWriter, r *http.Request, name string, responseCode in
 			},
 		},
 	}
-	_, err := client.Services.Report("endpointsapis.appspot.com", req).Do()
+	_, err := client.Services.Report("endpointsapis.appspot.com", req).Context(context.Background()).Do()
 	if err != nil {
 		return "", err
 	}
@@ -182,7 +183,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform telemetry report.
-	report(w, r, resource, responseCode, received, client)
+	go report(r.Header.Get("x-forwarded-proto"), r.ContentLength, resource, responseCode, received, client)
 }
 
 func main() {
