@@ -169,18 +169,6 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, result)
 	}
 
-	// Print all environment variables.
-	fmt.Fprintln(w, "Environments:")
-	fmt.Fprintln(w, strings.Join(os.Environ(), "\n"))
-
-	// Print all request headers.
-	fmt.Fprintln(w, "Headers:")
-	for key, values := range r.Header {
-		for _, value := range values {
-			fmt.Fprintf(w, "%v: %v\n", key, value)
-		}
-	}
-
 	// Perform telemetry report.
 	report(w, r, resource, responseCode, received, client)
 }
