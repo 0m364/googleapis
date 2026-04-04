@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -76,8 +77,9 @@ func check(w http.ResponseWriter, r *http.Request, name string, permission strin
 // Report calls Service Control API v2 for telemetry reporting.
 // Name specifies the target resource name. ResponseCode specifies
 // the response code returned to user. Received specifies the
-// timestamp when the request is received.
-func report(w http.ResponseWriter, r *http.Request, name string, responseCode int64, received time.Time, client *servicecontrol.Service) (string, error) {
+// timestamp when the request is received. Protocol specifies the
+// request protocol. Size specifies the request size.
+func report(name string, responseCode int64, received time.Time, protocol string, size int64, client *servicecontrol.Service) {
 	// Construct ReportRequest from the incoming HTTP request.
 	// The code assumes the incoming request processed by App Engine ingress.
 	req := &servicecontrol.ReportRequest{
@@ -88,10 +90,10 @@ func report(w http.ResponseWriter, r *http.Request, name string, responseCode in
 					Service:   "endpointsapis.appspot.com",
 					Operation: "google.example.endpointsapis.v1.Workspaces.GetWorkspace",
 					Version:   "v1",
-					Protocol:  r.Header.Get("x-forwarded-proto"),
+					Protocol:  protocol,
 				},
 				Request: &servicecontrol.Request{
-					Size: r.ContentLength,
+					Size: size,
 					Time: received.UTC().Format(time.RFC3339),
 				},
 				Response: &servicecontrol.Response{
@@ -108,11 +110,9 @@ func report(w http.ResponseWriter, r *http.Request, name string, responseCode in
 			},
 		},
 	}
-	_, err := client.Services.Report("endpointsapis.appspot.com", req).Do()
-	if err != nil {
-		return "", err
+	if _, err := client.Services.Report("endpointsapis.appspot.com", req).Do(); err != nil {
+		log.Printf("Failed to perform telemetry report: %v", err)
 	}
-	return "{}", nil
 }
 
 // Parse processes the request path and extract the resource name and
@@ -141,7 +141,8 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	received := time.Now()
 
 	// Create a client for Service Control API v2.
-	client, err := servicecontrol.NewService(r.Context())
+	// Use context.Background() because the client is used in a background goroutine.
+	client, err := servicecontrol.NewService(context.Background())
 	if err != nil {
 		fmt.Fprintln(w, "Error:")
 		fmt.Fprintln(w, err.Error())
@@ -181,8 +182,12 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Extract necessary information for the background report.
+	protocol := r.Header.Get("x-forwarded-proto")
+	size := r.ContentLength
+
 	// Perform telemetry report.
-	report(w, r, resource, responseCode, received, client)
+	go report(resource, responseCode, received, protocol, size, client)
 }
 
 func main() {
